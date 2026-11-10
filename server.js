@@ -33,6 +33,7 @@ function snapshot(room) {
       id: p.id,
       name: p.name,
       hue: p.hue,
+      spectator: p.spectator,
       alive: p.alive,
       tx: p.tx,
       ty: p.ty,
@@ -54,15 +55,17 @@ function send(ws, value) {
 }
 
 function createPlayer(ws, data) {
+  const spectator = Boolean(data.spectator);
   return {
     id: crypto.randomUUID(),
     ws,
     name: cleanName(data.name),
     hue: Number.isFinite(data.hue) ? Math.max(0, Math.min(359, data.hue)) : Math.floor(Math.random() * 360),
-    alive: true,
+    spectator,
+    alive: !spectator,
     tx: 2000,
     ty: 2000,
-    cells: [{ x: 2000, y: 2000, m: 22, dr: 28 }],
+    cells: spectator ? [] : [{ x: 2000, y: 2000, m: 22, dr: 28 }],
     updatedAt: Date.now()
   };
 }
@@ -123,7 +126,8 @@ wss.on('connection', (ws) => {
       if (Number.isFinite(data.tx)) p.tx = Math.max(0, Math.min(4000, data.tx));
       if (Number.isFinite(data.ty)) p.ty = Math.max(0, Math.min(4000, data.ty));
       if (Array.isArray(data.cells)) p.cells = data.cells.slice(0, 16).map((c) => ({ x: Number(c.x) || 0, y: Number(c.y) || 0, m: Number(c.m) || 1, dr: Number(c.dr) || 6 }));
-      p.alive = Boolean(data.alive);
+      p.alive = p.spectator ? false : Boolean(data.alive);
+      if (!p.alive) p.cells = [];
       p.updatedAt = Date.now();
       if (data.mode) ws.room.mode = cleanMode(data.mode);
     }

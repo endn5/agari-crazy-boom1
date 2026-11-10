@@ -87,6 +87,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 
 body:not(.playing) .play-only { display: none; }
 body:not(.boom) .boom-only { display: none; }
+body.spectating .play-only { display: none; }
 
 #toast {
   position: absolute; left: 50%; top: 84px; transform: translate(-50%, -6px);
@@ -197,9 +198,10 @@ body:not(.boom) .boom-only { display: none; }
       <label for="nick">Tu nombre</label>
       <input id="nick" maxlength="14" autocomplete="off" placeholder="Anónimo">
     </div>
-    <div class="online">
+  <div class="online">
       <strong>Multijugador</strong>
       <div class="online-row"><input id="roomCode" maxlength="8" autocomplete="off" placeholder="Código (opcional)"><button type="button" class="mode" id="connectOnline"><b>Conectar</b><span>Crear o entrar</span></button></div>
+      <button type="button" class="mode" id="spectateOnline"><b>Espectador</b><span>Ver la sala sin jugar</span></button>
       <div id="onlineStatus">Sin conexión: puedes jugar solo con bots.</div>
     </div>
     <div class="modes" role="radiogroup" aria-label="Modo de juego">
@@ -237,7 +239,7 @@ body:not(.boom) .boom-only { display: none; }
   var speedOf = function (m) { return Math.max(125, 540 * Math.pow(m, -0.17)); };
   var fmt = function (n) { return Math.floor(n).toLocaleString('es'); };
 
-  var mode = 'classic', state = 'menu', now = 0;
+  var mode = 'classic', state = 'menu', now = 0, spectatorMode = false;
   var vw = 0, vh = 0, dpr = 1, camX = W / 2, camY = H / 2, zoom = 0.5, shake = 0;
   var mx = 0, my = 0, focus = null;
   var stats = { max: 0, start: 0, time: 0, eaten: 0 };
@@ -682,7 +684,7 @@ body:not(.boom) .boom-only { display: none; }
   }
 
   /* ---------- multijugador ---------- */
-  var roomCodeInput = $('roomCode'), connectOnline = $('connectOnline'), onlineStatusEl = $('onlineStatus');
+  var roomCodeInput = $('roomCode'), connectOnline = $('connectOnline'), spectateOnline = $('spectateOnline'), onlineStatusEl = $('onlineStatus');
   function setOnlineStatus(text, kind) {
     onlineStatusEl.textContent = text; onlineStatusEl.className = kind || '';
   }
@@ -699,7 +701,7 @@ body:not(.boom) .boom-only { display: none; }
       var o = remotePlayers[data.id];
       if (!o) { o = makeOwner(data.name, false, data.hue); o.isRemote = true; remotePlayers[data.id] = o; owners.push(o); }
       o.name = data.name; setHue(o, data.hue); o.alive = !!data.alive; o.tx = data.tx; o.ty = data.ty;
-      o.cells = (data.cells || []).map(function (c) { var n = newCell(c.x, c.y, c.m); n.dr = c.dr || radiusOf(c.m); return n; });
+      o.cells = o.alive ? (data.cells || []).map(function (c) { var n = newCell(c.x, c.y, c.m); n.dr = c.dr || radiusOf(c.m); return n; }) : [];
     }
     Object.keys(remotePlayers).forEach(function (id) {
       if (seen[id]) return;
@@ -712,11 +714,15 @@ body:not(.boom) .boom-only { display: none; }
     setOnlineStatus('Conectando…');
     socket = new WebSocket(wsUrl());
     socket.onopen = function () {
-      socket.send(JSON.stringify({ type: 'join', room: roomCodeInput.value.trim(), name: nick.value.trim(), mode: mode, hue: player.hue }));
+      socket.send(JSON.stringify({ type: 'join', room: roomCodeInput.value.trim(), name: nick.value.trim() || 'Espectador', mode: mode, hue: player.hue, spectator: spectatorMode }));
     };
     socket.onmessage = function (event) {
       var msg; try { msg = JSON.parse(event.data); } catch (e) { return; }
-      if (msg.type === 'joined') { onlineId = msg.id; onlineRoom = msg.room; roomCodeInput.value = msg.room; setOnlineStatus('Sala ' + msg.room + ' lista. Pulsa Jugar.', 'ok'); }
+      if (msg.type === 'joined') {
+        onlineId = msg.id; onlineRoom = msg.room; roomCodeInput.value = msg.room;
+        if (spectatorMode) { state = 'spectate'; menu.hidden = true; document.body.classList.add('playing', 'spectating'); setOnlineStatus('Sala ' + msg.room + ' · modo espectador', 'ok'); }
+        else setOnlineStatus('Sala ' + msg.room + ' lista. Pulsa Jugar.', 'ok');
+      }
       else if (msg.type === 'room-state') applyRemoteState(msg);
       else if (msg.type === 'error') setOnlineStatus(msg.message, 'err');
     };
@@ -729,10 +735,17 @@ body:not(.boom) .boom-only { display: none; }
     socket.send(JSON.stringify({ type: 'input', mode: mode, tx: player.tx, ty: player.ty, alive: player.alive, cells: player.cells.map(function (c) { return { x: c.x, y: c.y, m: c.m, dr: c.dr }; }) }));
   }
   connectOnline.addEventListener('click', connectMultiplayer);
+  spectateOnline.addEventListener('click', function () {
+    spectatorMode = true;
+    if (!socket || socket.readyState !== 1) connectMultiplayer();
+    else { state = 'spectate'; menu.hidden = true; document.body.classList.add('playing', 'spectating'); }
+  });
 
   /* ---------- estados ---------- */
   var menu = $('menu'), nick = $('nick');
   function startGame() {
+    spectatorMode = false;
+    document.body.classList.remove('spectating');
     if (!socket || socket.readyState !== 1) connectMultiplayer();
     player.name = (nick.value.trim() || 'Anónimo').slice(0, 14);
     try { localStorage.setItem('cv_nick', nick.value.trim()); } catch (e) {}
@@ -745,6 +758,11 @@ body:not(.boom) .boom-only { display: none; }
     document.body.classList.add('playing');
   }
   function die() {
+    player.alive = false;
+    player.cells = [];
+    if (socket && socket.readyState === 1) {
+      socket.send(JSON.stringify({ type: 'input', mode: mode, tx: player.tx, ty: player.ty, alive: false, cells: [] }));
+    }
     state = 'dead';
     stats.time = now - stats.start;
     try { localStorage.setItem('cv_best', String(Math.floor(best))); } catch (e) {}
