@@ -835,8 +835,17 @@ body.spectating .play-only { display: none; }
   window.addEventListener('pointercancel', function () { holdBtn = false; });
 
   /* ---------- cámara ---------- */
+  function onlineRoomActive() { return !!(socket && socket.readyState === 1 && onlineId); }
+  function leaderboardOwners() {
+    return owners.filter(function (o) {
+      if (!o.alive || !o.cells.length) return false;
+      if (state === 'spectate') return o.isRemote;
+      if (onlineRoomActive()) return o === player || o.isRemote;
+      return true;
+    });
+  }
   function spectatorCandidates() {
-    return owners.filter(function (o) { return o.isRemote && o.alive && o.cells.length; }).sort(function (a, b) { return total(b) - total(a); });
+    return leaderboardOwners().filter(function (o) { return o.isRemote; }).sort(function (a, b) { return total(b) - total(a); });
   }
   function updateSpectatorLabel() {
     var list = spectatorCandidates();
@@ -1290,7 +1299,7 @@ body.spectating .play-only { display: none; }
     for (i = 0; i < spikes.length; i++) { var sp = spikes[i]; if (sp.x > L - 120 && sp.x < R + 120 && sp.y > T - 120 && sp.y < B + 120) drawSpike(sp, t); }
 
     list.length = 0;
-    for (i = 0; i < owners.length; i++) { var o = owners[i]; if (!o.alive || (state === 'spectate' && !o.isRemote)) continue; for (j = 0; j < o.cells.length; j++) list.push({ c: o.cells[j], o: o }); }
+    for (i = 0; i < owners.length; i++) { var o = owners[i]; if (!o.alive || (onlineRoomActive() && o.isBot)) continue; for (j = 0; j < o.cells.length; j++) list.push({ c: o.cells[j], o: o }); }
     list.sort(function (a, b) { return a.c.m - b.c.m; });
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
     for (i = 0; i < list.length; i++) {
@@ -1348,7 +1357,7 @@ body.spectating .play-only { display: none; }
     li.appendChild(a); li.appendChild(b); li.appendChild(c); lbList.appendChild(li);
   }
   function updateLB() {
-    var list2 = owners.filter(function (o) { return o.alive && (state !== 'spectate' || o.isRemote); }).map(function (o) { return { o: o, m: total(o) }; }).sort(function (a, b) { return b.m - a.m; });
+    var list2 = leaderboardOwners().map(function (o) { return { o: o, m: total(o) }; }).sort(function (a, b) { return b.m - a.m; });
     lbList.textContent = '';
     list2.slice(0, 8).forEach(function (e, i) { row(i + 1, e); });
     if (player.alive) { var idx = list2.findIndex(function (e) { return e.o === player; }); if (idx >= 8) row(idx + 1, list2[idx]); }
