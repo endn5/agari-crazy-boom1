@@ -703,13 +703,16 @@ body.spectating .play-only { display: none; }
   }
   function applyRemoteState(msg) {
     if (!msg || !Array.isArray(msg.players)) return;
+    for (var bi = owners.length - 1; bi >= 0; bi--) {
+      if (owners[bi].isBot && !owners[bi].isRemote) owners.splice(bi, 1);
+    }
     var seen = {};
     for (var i = 0; i < msg.players.length; i++) {
       var data = msg.players[i]; if (data.id === onlineId) continue;
       seen[data.id] = true;
       var o = remotePlayers[data.id];
-      if (!o) { o = makeOwner(data.name, false, data.hue); o.isRemote = true; remotePlayers[data.id] = o; owners.push(o); }
-      o.name = data.name; setHue(o, data.hue); o.alive = !!data.alive; o.tx = data.tx; o.ty = data.ty;
+      if (!o) { o = makeOwner(data.name, !!data.bot, data.hue); o.isRemote = true; remotePlayers[data.id] = o; owners.push(o); }
+      o.name = data.name; o.isBot = !!data.bot; setHue(o, data.hue); o.alive = !!data.alive; o.tx = data.tx; o.ty = data.ty;
       o.cells = o.alive ? (data.cells || []).map(function (c) { var n = newCell(c.x, c.y, c.m); n.dr = c.dr || radiusOf(c.m); return n; }) : [];
     }
     Object.keys(remotePlayers).forEach(function (id) {
@@ -1299,7 +1302,7 @@ body.spectating .play-only { display: none; }
     for (i = 0; i < spikes.length; i++) { var sp = spikes[i]; if (sp.x > L - 120 && sp.x < R + 120 && sp.y > T - 120 && sp.y < B + 120) drawSpike(sp, t); }
 
     list.length = 0;
-    for (i = 0; i < owners.length; i++) { var o = owners[i]; if (!o.alive || (onlineRoomActive() && o.isBot)) continue; for (j = 0; j < o.cells.length; j++) list.push({ c: o.cells[j], o: o }); }
+    for (i = 0; i < owners.length; i++) { var o = owners[i]; if (!o.alive || (onlineRoomActive() && o.isBot && !o.isRemote)) continue; for (j = 0; j < o.cells.length; j++) list.push({ c: o.cells[j], o: o }); }
     list.sort(function (a, b) { return a.c.m - b.c.m; });
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
     for (i = 0; i < list.length; i++) {

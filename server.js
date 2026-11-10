@@ -8,6 +8,7 @@ const PORT = Number(process.env.PORT || 10000);
 const ROOT = __dirname;
 const rooms = new Map();
 const MAX_PLAYERS = 10;
+const BOT_NAMES = ['Pepito', 'Luna', 'Bruno', 'Mía', 'Kiko', 'Nube', 'Tito', 'Zoe'];
 
 function roomCode() {
   let code;
@@ -33,6 +34,7 @@ function snapshot(room) {
       id: p.id,
       name: p.name,
       hue: p.hue,
+      bot: Boolean(p.bot),
       spectator: p.spectator,
       alive: p.alive,
       tx: p.tx,
@@ -46,7 +48,7 @@ function snapshot(room) {
 function broadcast(room) {
   const message = JSON.stringify(snapshot(room));
   for (const p of room.players.values()) {
-    if (p.ws.readyState === p.ws.OPEN) p.ws.send(message);
+    if (p.ws && p.ws.readyState === p.ws.OPEN) p.ws.send(message);
   }
 }
 
@@ -70,12 +72,42 @@ function createPlayer(ws, data) {
   };
 }
 
+function createBot(index) {
+  const m = 20 + index * 4;
+  return {
+    id: `bot-${index}`,
+    ws: null,
+    bot: true,
+    spectator: false,
+    name: BOT_NAMES[index % BOT_NAMES.length],
+    hue: (index * 137.5) % 360,
+    alive: true,
+    tx: 500 + index * 360,
+    ty: 600 + index * 280,
+    cells: [{ x: 500 + index * 360, y: 600 + index * 280, m, dr: 6 * Math.sqrt(m) }],
+    updatedAt: Date.now(),
+    thinkAt: 0
+  };
+}
+
+function ensureBots(room) {
+  for (let i = 0; i < BOT_NAMES.length; i++) {
+    const id = `bot-${i}`;
+    if (!room.players.has(id)) room.players.set(id, createBot(i));
+  }
+}
+
+function humanCount(room) {
+  return [...room.players.values()].filter((p) => !p.bot).length;
+}
+
 function joinRoom(ws, data) {
   const requested = String(data.room || '').trim().toUpperCase().slice(0, 8);
   const code = requested || roomCode();
   let room = rooms.get(code);
   if (!room) room = { code, mode: cleanMode(data.mode), players: new Map(), createdAt: Date.now() };
-  if (room.players.size >= MAX_PLAYERS) return send(ws, { type: 'error', message: 'La sala está llena.' });
+  ensureBots(room);
+  if (humanCount(room) >= MAX_PLAYERS) return send(ws, { type: 'error', message: 'La sala está llena.' });
   if (data.mode) room.mode = cleanMode(data.mode);
 
   const player = createPlayer(ws, data);
@@ -91,7 +123,7 @@ function leaveRoom(ws) {
   const room = ws.room;
   if (!room || !ws.player) return;
   room.players.delete(ws.player.id);
-  if (room.players.size === 0) rooms.delete(room.code);
+  if (humanCount(room) === 0) rooms.delete(room.code);
   else broadcast(room);
   ws.room = null;
   ws.player = null;
@@ -139,7 +171,24 @@ wss.on('connection', (ws) => {
 setInterval(() => {
   const cutoff = Date.now() - 15000;
   for (const room of rooms.values()) {
-    for (const p of room.players.values()) if (p.updatedAt < cutoff) p.alive = false;
+    for (const p of room.players.values()) {
+      if (p.bot) {
+        const c = p.cells[0];
+        if (c) {
+          const dx = p.tx - c.x, dy = p.ty - c.y, d = Math.hypot(dx, dy);
+          if (d < 80) {
+            p.tx = 300 + ((Number(p.id.slice(4)) * 613 + Date.now() / 1000 * 37) % 3400);
+            p.ty = 300 + ((Number(p.id.slice(4)) * 911 + Date.now() / 1000 * 29) % 3400);
+          } else {
+            const step = Math.min(d, 95);
+            c.x += dx / d * step; c.y += dy / d * step;
+          }
+          c.dr = 6 * Math.sqrt(c.m); p.updatedAt = Date.now();
+        }
+      } else if (p.updatedAt < cutoff) {
+        p.alive = false; p.cells = [];
+      }
+    }
     broadcast(room);
   }
 }, 1000);
