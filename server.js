@@ -103,8 +103,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: [...rooms.values()].reduce((n, r) => n + r.players.size, 0) }));
   }
-  let file = url.pathname === '/' ? 'Células Voraces.html' : decodeURIComponent(url.pathname.slice(1));
-  if (file.includes('..') || file.includes('/') || file.includes('\\')) file = 'Células Voraces.html';
+  let file = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname.slice(1));
+  if (file.includes('..') || file.includes('/') || file.includes('\\')) file = 'index.html';
   const full = path.join(ROOT, file);
   fs.readFile(full, (err, body) => {
     if (err) return res.writeHead(404).end('Not found');
