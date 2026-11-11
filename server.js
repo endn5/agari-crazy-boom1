@@ -99,7 +99,8 @@ function createBot(index) {
     ty: 600 + index * 280,
     cells: [{ x: 500 + index * 360, y: 600 + index * 280, m, dr: 6 * Math.sqrt(m) }],
     updatedAt: Date.now(),
-    thinkAt: 0
+    thinkAt: 0,
+    deadAt: 0
   };
 }
 
@@ -183,6 +184,16 @@ wss.on('connection', (ws) => {
       if (data.mode) ws.room.mode = cleanMode(data.mode);
       if (p.id === ws.room.hostId && data.world) ws.room.world = cleanWorld(data.world);
     }
+    if (data.type === 'hit') {
+      const target = ws.room.players.get(String(data.targetId || ''));
+      if (target && target.id !== ws.player.id && target.alive && ws.player.alive) {
+        target.alive = false;
+        target.cells = [];
+        if (target.bot) target.deadAt = Date.now();
+        target.updatedAt = Date.now();
+        broadcast(ws.room);
+      }
+    }
     if (data.type === 'leave') leaveRoom(ws);
   });
   ws.on('close', () => leaveRoom(ws));
@@ -193,12 +204,23 @@ setInterval(() => {
   for (const room of rooms.values()) {
     for (const p of room.players.values()) {
       if (p.bot) {
+        if (!p.alive) {
+          if (Date.now() - p.deadAt > 2500) { p.alive = true; p.cells = [{ x: 500 + Number(p.id.slice(4)) * 360, y: 600 + Number(p.id.slice(4)) * 280, m: 20 + Number(p.id.slice(4)) * 4, dr: 20 }]; }
+          continue;
+        }
         const c = p.cells[0];
         if (c) {
+          if (Date.now() >= p.thinkAt) {
+            const foods = room.world && Array.isArray(room.world.food) ? room.world.food : [];
+            let best = null, bd = Infinity;
+            for (const f of foods) { const fd = Math.hypot(f.x - c.x, f.y - c.y); if (fd < bd) { bd = fd; best = f; } }
+            if (best) { p.tx = best.x; p.ty = best.y; }
+            else { const n = Number(p.id.slice(4)); p.tx = 300 + ((n * 613 + Date.now() / 1000 * 37) % 3400); p.ty = 300 + ((n * 911 + Date.now() / 1000 * 29) % 3400); }
+            p.thinkAt = Date.now() + 700;
+          }
           const dx = p.tx - c.x, dy = p.ty - c.y, d = Math.hypot(dx, dy);
           if (d < 80) {
-            p.tx = 300 + ((Number(p.id.slice(4)) * 613 + Date.now() / 1000 * 37) % 3400);
-            p.ty = 300 + ((Number(p.id.slice(4)) * 911 + Date.now() / 1000 * 29) % 3400);
+            p.thinkAt = 0;
           } else {
             const step = Math.min(d, 18);
             c.x += dx / d * step; c.y += dy / d * step;

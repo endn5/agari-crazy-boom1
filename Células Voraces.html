@@ -541,7 +541,10 @@ body.spectating .play-only { display: none; }
             var b = ob.cells[q]; if (b.dead || a.dead) continue;
             if (a.m <= b.m * 1.25) continue;
             var d = Math.hypot(b.x - a.x, b.y - a.y);
-            if (d < ra - radiusOf(b.m) * 0.35) { a.m += b.m; b.dead = true; if (oa === player) stats.eaten++; }
+            if (d < ra - radiusOf(b.m) * 0.35) {
+              a.m += b.m; b.dead = true;
+              if (oa === player) { stats.eaten++; if (ob.isRemote && ob.netId && socket && socket.readyState === 1) socket.send(JSON.stringify({ type: 'hit', targetId: ob.netId })); }
+            }
           }
         }
       }
@@ -710,10 +713,11 @@ body.spectating .play-only { display: none; }
     }
     var seen = {};
     for (var i = 0; i < msg.players.length; i++) {
-      var data = msg.players[i]; if (data.id === onlineId) continue;
+      var data = msg.players[i];
+      if (data.id === onlineId) { if (!data.alive && player.alive && state === 'play') die(); continue; }
       seen[data.id] = true;
       var o = remotePlayers[data.id];
-      if (!o) { o = makeOwner(data.name, !!data.bot, data.hue); o.isRemote = true; remotePlayers[data.id] = o; owners.push(o); }
+      if (!o) { o = makeOwner(data.name, !!data.bot, data.hue); o.isRemote = true; o.netId = data.id; remotePlayers[data.id] = o; owners.push(o); }
       o.name = data.name; o.isBot = !!data.bot; setHue(o, data.hue); o.alive = !!data.alive; o.tx = data.tx; o.ty = data.ty;
       o.cells = o.alive ? (data.cells || []).map(function (c, ci) {
         var old = o.cells[ci], n = newCell(c.x, c.y, c.m);
@@ -772,6 +776,9 @@ body.spectating .play-only { display: none; }
         if (c.mTarget !== undefined) { c.m += (c.mTarget - c.m) * blend; c.dr += (c.rTarget - c.dr) * blend; }
       }
     }
+  }
+  function updatePortalVisual() {
+    if (typeof P !== 'undefined' && socket && onlineId && onlineHostId && onlineId !== onlineHostId) layoutCoil(P.g, now);
   }
   function connectMultiplayer() {
     if (socket && socket.readyState <= 1) return;
@@ -1457,7 +1464,7 @@ body.spectating .play-only { display: none; }
   var last = performance.now();
   function frame(ts) {
     var dt = Math.min(0.05, (ts - last) / 1000); last = ts;
-    update(dt); sendNetworkState(dt); interpolateRemote(dt); interpolateSharedDragons(dt); updateCamera(dt);
+    update(dt); sendNetworkState(dt); interpolateRemote(dt); interpolateSharedDragons(dt); updatePortalVisual(); updateCamera(dt);
     lbT -= dt; if (lbT <= 0) { lbT = 0.5; updateLB(); }
     draw(ts / 1000); updateHUD();
     requestAnimationFrame(frame);
