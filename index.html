@@ -671,7 +671,7 @@ body.spectating .play-only { display: none; }
       }
       if (!em.q.length) emitters.splice(i, 1);
     }
-    dragonsUpdate(dt);
+    if (!socket || !onlineId || !onlineHostId || onlineId === onlineHostId) dragonsUpdate(dt);
     if ((holdE || holdBtn) && state === 'play' && player.alive && now >= player.ejectAt) { player.ejectAt = now + 0.08; ejectMass(player); }
 
     for (i = bombs.length - 1; i >= 0; i--) {
@@ -743,8 +743,20 @@ body.spectating .play-only { display: none; }
     if (Array.isArray(w.spikes)) spikes = w.spikes;
     if (Array.isArray(w.dragons) && typeof DRAGONS !== 'undefined') {
       for (var i = 0; i < Math.min(DRAGONS.length, w.dragons.length); i++) {
-        var g = DRAGONS[i], src = w.dragons[i]; g.x = src.x; g.y = src.y;
-        for (var j = 0; j < Math.min(g.segs.length, src.segs.length); j++) { g.segs[j].x = src.segs[j].x; g.segs[j].y = src.segs[j].y; }
+        var g = DRAGONS[i], src = w.dragons[i]; g.tx = src.x; g.ty = src.y;
+        for (var j = 0; j < Math.min(g.segs.length, src.segs.length); j++) { g.segs[j].tx = src.segs[j].x; g.segs[j].ty = src.segs[j].y; }
+      }
+    }
+  }
+  function interpolateSharedDragons(dt) {
+    if (!socket || !onlineId || !onlineHostId || onlineId === onlineHostId || typeof DRAGONS === 'undefined') return;
+    var blend = 1 - Math.exp(-18 * dt);
+    for (var i = 0; i < DRAGONS.length; i++) {
+      var g = DRAGONS[i];
+      if (g.tx !== undefined) { g.x += (g.tx - g.x) * blend; g.y += (g.ty - g.y) * blend; }
+      for (var j = 0; j < g.segs.length; j++) {
+        var s = g.segs[j]; if (s.tx === undefined) continue;
+        s.x += (s.tx - s.x) * blend; s.y += (s.ty - s.y) * blend;
       }
     }
   }
@@ -783,7 +795,7 @@ body.spectating .play-only { display: none; }
     if (!socket || socket.readyState !== 1 || state !== 'play') return;
     sendT -= dt; worldSendT -= dt; if (sendT > 0) return; sendT = 0.08;
     var packet = { type: 'input', mode: mode, tx: player.tx, ty: player.ty, alive: player.alive, cells: player.cells.map(function (c) { return { x: c.x, y: c.y, m: c.m, dr: c.dr }; }) };
-    if (onlineId === onlineHostId && worldSendT <= 0) { packet.world = sharedWorldSnapshot(); worldSendT = 0.5; }
+    if (onlineId === onlineHostId && worldSendT <= 0) { packet.world = sharedWorldSnapshot(); worldSendT = 0.1; }
     socket.send(JSON.stringify(packet));
   }
   connectOnline.addEventListener('click', connectMultiplayer);
@@ -1441,7 +1453,7 @@ body.spectating .play-only { display: none; }
   var last = performance.now();
   function frame(ts) {
     var dt = Math.min(0.05, (ts - last) / 1000); last = ts;
-    update(dt); sendNetworkState(dt); interpolateRemote(dt); updateCamera(dt);
+    update(dt); sendNetworkState(dt); interpolateRemote(dt); interpolateSharedDragons(dt); updateCamera(dt);
     lbT -= dt; if (lbT <= 0) { lbT = 0.5; updateLB(); }
     draw(ts / 1000); updateHUD();
     requestAnimationFrame(frame);
