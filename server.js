@@ -68,6 +68,7 @@ function createPlayer(ws, data) {
     tx: 2000,
     ty: 2000,
     cells: spectator ? [] : [{ x: 2000, y: 2000, m: 22, dr: 28 }],
+    gain: 0,
     updatedAt: Date.now()
   };
 }
@@ -85,6 +86,7 @@ function createBot(index) {
     tx: 500 + index * 360,
     ty: 600 + index * 280,
     cells: [{ x: 500 + index * 360, y: 600 + index * 280, m, dr: 6 * Math.sqrt(m) }],
+    gain: 0,
     updatedAt: Date.now(),
     thinkAt: 0
   };
@@ -128,7 +130,22 @@ function leaveRoom(ws) {
   ws.room = null;
   ws.player = null;
 }
-
+function resolvePlayerCollisions(room) {
+  const players = [...room.players.values()].filter((p) => p.alive && p.cells.length);
+  for (const predator of players) {
+    for (const prey of players) {
+      if (predator === prey || !prey.alive || !prey.cells.length) continue;
+      const a = predator.cells[0], b = prey.cells[0];
+      if (!a || !b || a.m <= b.m * 1.25) continue;
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < Math.max(8, 6 * Math.sqrt(a.m)) - 2 * Math.sqrt(b.m)) {
+        a.m += b.m; a.dr = 6 * Math.sqrt(a.m);
+        prey.alive = false; prey.cells = []; prey.updatedAt = Date.now();
+        predator.gain += b.m;
+      }
+    }
+  }
+}
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   if (url.pathname === '/health') {
@@ -158,6 +175,7 @@ wss.on('connection', (ws) => {
       if (Number.isFinite(data.tx)) p.tx = Math.max(0, Math.min(4000, data.tx));
       if (Number.isFinite(data.ty)) p.ty = Math.max(0, Math.min(4000, data.ty));
       if (Array.isArray(data.cells)) p.cells = data.cells.slice(0, 16).map((c) => ({ x: Number(c.x) || 0, y: Number(c.y) || 0, m: Number(c.m) || 1, dr: Number(c.dr) || 6 }));
+      if (p.gain > 0 && p.cells[0]) { p.cells[0].m += p.gain; p.cells[0].dr = 6 * Math.sqrt(p.cells[0].m); p.gain = 0; }
       p.alive = p.spectator ? false : Boolean(data.alive);
       if (!p.alive) p.cells = [];
       p.updatedAt = Date.now();
@@ -180,7 +198,7 @@ setInterval(() => {
             p.tx = 300 + ((Number(p.id.slice(4)) * 613 + Date.now() / 1000 * 37) % 3400);
             p.ty = 300 + ((Number(p.id.slice(4)) * 911 + Date.now() / 1000 * 29) % 3400);
           } else {
-            const step = Math.min(d, 95);
+            const step = Math.min(d, 18);
             c.x += dx / d * step; c.y += dy / d * step;
           }
           c.dr = 6 * Math.sqrt(c.m); p.updatedAt = Date.now();
@@ -189,8 +207,9 @@ setInterval(() => {
         p.alive = false; p.cells = [];
       }
     }
+    resolvePlayerCollisions(room);
     broadcast(room);
   }
-}, 1000);
+}, 100);
 
 server.listen(PORT, '0.0.0.0', () => console.log(`Células Voraces server listening on ${PORT}`));

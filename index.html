@@ -708,7 +708,8 @@ body.spectating .play-only { display: none; }
     }
     var seen = {};
     for (var i = 0; i < msg.players.length; i++) {
-      var data = msg.players[i]; if (data.id === onlineId) continue;
+      var data = msg.players[i];
+      if (data.id === onlineId) { if (!data.alive && player.alive && state === 'play') die(); continue; }
       seen[data.id] = true;
       var o = remotePlayers[data.id];
       if (!o) { o = makeOwner(data.name, !!data.bot, data.hue); o.isRemote = true; remotePlayers[data.id] = o; owners.push(o); }
