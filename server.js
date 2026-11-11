@@ -200,7 +200,7 @@ setInterval(() => {
             p.tx = 300 + ((Number(p.id.slice(4)) * 613 + Date.now() / 1000 * 37) % 3400);
             p.ty = 300 + ((Number(p.id.slice(4)) * 911 + Date.now() / 1000 * 29) % 3400);
           } else {
-            const step = Math.min(d, 10);
+            const step = Math.min(d, 18);
             c.x += dx / d * step; c.y += dy / d * step;
           }
           c.dr = 6 * Math.sqrt(c.m); p.updatedAt = Date.now();

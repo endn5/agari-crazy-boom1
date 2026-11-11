@@ -516,7 +516,7 @@ body.spectating .play-only { display: none; }
   function eat() {
     var i, j, k, f;
     for (i = 0; i < owners.length; i++) {
-      var o = owners[i]; if (!o.alive || o.isRemote) continue;
+      var o = owners[i]; if (!o.alive) continue;
       for (j = 0; j < o.cells.length; j++) {
         var c = o.cells[j]; if (c.dead) continue;
         var r = radiusOf(c.m);
@@ -536,7 +536,7 @@ body.spectating .play-only { display: none; }
         var a = oa.cells[j]; if (a.dead) continue;
         var ra = radiusOf(a.m);
         for (k = 0; k < owners.length; k++) {
-          var ob = owners[k]; if (ob === oa || ob.isRemote || !ob.alive || ob.fx.shield > 0) continue;
+          var ob = owners[k]; if (ob === oa || !ob.alive || ob.fx.shield > 0) continue;
           for (var q = 0; q < ob.cells.length; q++) {
             var b = ob.cells[q]; if (b.dead || a.dead) continue;
             if (a.m <= b.m * 1.25) continue;
@@ -731,6 +731,7 @@ body.spectating .play-only { display: none; }
   function sharedWorldSnapshot() {
     return {
       food: food, items: items, bombs: bombs, spikes: spikes,
+      portal: (typeof P !== 'undefined' ? { ph: P.ph, t: P.t, open: P.open, k: P.k, ex: P.ex, n: P.n } : null),
       dragons: (typeof DRAGONS !== 'undefined' ? DRAGONS : []).map(function (g) {
         return { x: g.x, y: g.y, segs: g.segs.map(function (s) { return { x: s.x, y: s.y }; }) };
       })
@@ -741,6 +742,7 @@ body.spectating .play-only { display: none; }
     if (Array.isArray(w.items)) items = w.items;
     if (Array.isArray(w.bombs)) bombs = w.bombs;
     if (Array.isArray(w.spikes)) spikes = w.spikes;
+    if (w.portal && typeof P !== 'undefined') { P.ph = w.portal.ph; P.t = w.portal.t; P.open = w.portal.open; P.k = w.portal.k; P.ex = w.portal.ex; P.n = w.portal.n; }
     if (Array.isArray(w.dragons) && typeof DRAGONS !== 'undefined') {
       for (var i = 0; i < Math.min(DRAGONS.length, w.dragons.length); i++) {
         var g = DRAGONS[i], src = w.dragons[i]; g.tx = src.x; g.ty = src.y;
@@ -1065,15 +1067,17 @@ body.spectating .play-only { display: none; }
     }
   }
   function dragonsUpdate(dt) {
-    for (var i = 0; i < DRAGONS.length; i++) {
-      var g = DRAGONS[i];
-      g.d += g.dir * g.speed * dt;
-      if (g.beh === 'slam') slamStep(g, dt);
-      layoutDragon(g, now);
-      if (g.beh === 'giant') giantBumps(g, dt);
-      if (g.beh === 'under' && Math.hypot(g.segs[0].x - camX, g.segs[0].y - camY) < 650) shake = Math.max(shake, 0.1);
+    if (!socket || !onlineId || !onlineHostId || onlineId === onlineHostId) {
+      for (var i = 0; i < DRAGONS.length; i++) {
+        var g = DRAGONS[i];
+        g.d += g.dir * g.speed * dt;
+        if (g.beh === 'slam') slamStep(g, dt);
+        layoutDragon(g, now);
+        if (g.beh === 'giant') giantBumps(g, dt);
+        if (g.beh === 'under' && Math.hypot(g.segs[0].x - camX, g.segs[0].y - camY) < 650) shake = Math.max(shake, 0.1);
+      }
     }
-    portalUpdate(dt);
+    if (!socket || !onlineId || !onlineHostId || onlineId === onlineHostId) portalUpdate(dt);
   }
   function paintUnder(g, t) {
     var S = g.segs, N = g.N, c = g.c, i, s, sg;
