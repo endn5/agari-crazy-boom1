@@ -269,7 +269,7 @@ body.spectating .play-only { display: none; }
   var player = makeOwner('', false, 200);
   var owners = [player];
   var remotePlayers = {};
-  var socket = null, onlineRoom = '', onlineId = '', onlineStatus = 'offline', sendT = 0;
+  var socket = null, onlineRoom = '', onlineId = '', onlineHostId = '', onlineStatus = 'offline', sendT = 0, worldSendT = 0;
   for (var bi = 0; bi < BOT_COUNT; bi++) owners.push(makeOwner(BOT_NAMES[bi % BOT_NAMES.length], true, (bi * 137.5) % 360));
 
   var food = [], items = [], bombs = [], rings = [], spikes = [], emitters = [];
@@ -703,6 +703,8 @@ body.spectating .play-only { display: none; }
   }
   function applyRemoteState(msg) {
     if (!msg || !Array.isArray(msg.players)) return;
+    onlineHostId = msg.hostId || onlineHostId;
+    if (msg.world && onlineId !== onlineHostId) applySharedWorld(msg.world);
     for (var bi = owners.length - 1; bi >= 0; bi--) {
       if (owners[bi].isBot && !owners[bi].isRemote) owners.splice(bi, 1);
     }
@@ -725,6 +727,26 @@ body.spectating .play-only { display: none; }
       var stale = remotePlayers[id]; var ix = owners.indexOf(stale); if (ix >= 0) owners.splice(ix, 1); delete remotePlayers[id];
     });
     setOnlineStatus('Sala ' + msg.room + ' · ' + msg.players.length + ' jugador(es)', 'ok');
+  }
+  function sharedWorldSnapshot() {
+    return {
+      food: food, items: items, bombs: bombs, spikes: spikes,
+      dragons: (typeof DRAGONS !== 'undefined' ? DRAGONS : []).map(function (g) {
+        return { x: g.x, y: g.y, segs: g.segs.map(function (s) { return { x: s.x, y: s.y }; }) };
+      })
+    };
+  }
+  function applySharedWorld(w) {
+    if (Array.isArray(w.food)) food = w.food;
+    if (Array.isArray(w.items)) items = w.items;
+    if (Array.isArray(w.bombs)) bombs = w.bombs;
+    if (Array.isArray(w.spikes)) spikes = w.spikes;
+    if (Array.isArray(w.dragons) && typeof DRAGONS !== 'undefined') {
+      for (var i = 0; i < Math.min(DRAGONS.length, w.dragons.length); i++) {
+        var g = DRAGONS[i], src = w.dragons[i]; g.x = src.x; g.y = src.y;
+        for (var j = 0; j < Math.min(g.segs.length, src.segs.length); j++) { g.segs[j].x = src.segs[j].x; g.segs[j].y = src.segs[j].y; }
+      }
+    }
   }
   function interpolateRemote(dt) {
     var blend = 1 - Math.exp(-14 * dt);
@@ -759,8 +781,10 @@ body.spectating .play-only { display: none; }
   }
   function sendNetworkState(dt) {
     if (!socket || socket.readyState !== 1 || state !== 'play') return;
-    sendT -= dt; if (sendT > 0) return; sendT = 0.08;
-    socket.send(JSON.stringify({ type: 'input', mode: mode, tx: player.tx, ty: player.ty, alive: player.alive, cells: player.cells.map(function (c) { return { x: c.x, y: c.y, m: c.m, dr: c.dr }; }) }));
+    sendT -= dt; worldSendT -= dt; if (sendT > 0) return; sendT = 0.08;
+    var packet = { type: 'input', mode: mode, tx: player.tx, ty: player.ty, alive: player.alive, cells: player.cells.map(function (c) { return { x: c.x, y: c.y, m: c.m, dr: c.dr }; }) };
+    if (onlineId === onlineHostId && worldSendT <= 0) { packet.world = sharedWorldSnapshot(); worldSendT = 0.5; }
+    socket.send(JSON.stringify(packet));
   }
   connectOnline.addEventListener('click', connectMultiplayer);
   spectateOnline.addEventListener('click', function () {

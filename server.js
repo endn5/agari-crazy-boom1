@@ -24,12 +24,25 @@ function cleanName(value) {
 function cleanMode(value) {
   return value === 'boom' ? 'boom' : 'classic';
 }
-
+function cleanWorld(world) {
+  if (!world || typeof world !== 'object') return null;
+  const list = (value, max) => Array.isArray(value) ? value.slice(0, max) : [];
+  const point = (v) => ({ x: Number(v.x) || 0, y: Number(v.y) || 0 });
+  return {
+    food: list(world.food, 900).map((f) => ({ ...point(f), m: Number(f.m) || 1, vx: Number(f.vx) || 0, vy: Number(f.vy) || 0, col: String(f.col || '#fff').slice(0, 32), sp: Boolean(f.sp) })),
+    items: list(world.items, 20).map((f) => ({ ...point(f), type: String(f.type || 'speed').slice(0, 12), ph: Number(f.ph) || 0 })),
+    bombs: list(world.bombs, 40).map((f) => ({ ...point(f), R: Number(f.R) || 20, fuse: Number(f.fuse) || 0, vx: Number(f.vx) || 0, vy: Number(f.vy) || 0 })),
+    spikes: list(world.spikes, 20).map((f) => ({ ...point(f), r: Number(f.r) || 30, m: Number(f.m) || 0, hit: Boolean(f.hit) })),
+    dragons: list(world.dragons, 8).map((g) => ({ x: Number(g.x) || 0, y: Number(g.y) || 0, segs: list(g.segs, 80).map(point) }))
+  };
+}
 function snapshot(room) {
   return {
     type: 'room-state',
     room: room.code,
     mode: room.mode,
+    hostId: room.hostId || null,
+    world: room.world || null,
     players: [...room.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
@@ -105,13 +118,14 @@ function joinRoom(ws, data) {
   const requested = String(data.room || '').trim().toUpperCase().slice(0, 8);
   const code = requested || roomCode();
   let room = rooms.get(code);
-  if (!room) room = { code, mode: cleanMode(data.mode), players: new Map(), createdAt: Date.now() };
+  if (!room) room = { code, mode: cleanMode(data.mode), players: new Map(), hostId: null, world: null, createdAt: Date.now() };
   ensureBots(room);
   if (humanCount(room) >= MAX_PLAYERS) return send(ws, { type: 'error', message: 'La sala está llena.' });
   if (data.mode) room.mode = cleanMode(data.mode);
 
   const player = createPlayer(ws, data);
   room.players.set(player.id, player);
+  if (!room.hostId && !player.spectator) room.hostId = player.id;
   rooms.set(code, room);
   ws.room = room;
   ws.player = player;
@@ -123,6 +137,11 @@ function leaveRoom(ws) {
   const room = ws.room;
   if (!room || !ws.player) return;
   room.players.delete(ws.player.id);
+  if (room.hostId === ws.player.id) {
+    const next = [...room.players.values()].find((p) => !p.bot && !p.spectator);
+    room.hostId = next ? next.id : null;
+    room.world = null;
+  }
   if (humanCount(room) === 0) rooms.delete(room.code);
   else broadcast(room);
   ws.room = null;
@@ -162,6 +181,7 @@ wss.on('connection', (ws) => {
       if (!p.alive) p.cells = [];
       p.updatedAt = Date.now();
       if (data.mode) ws.room.mode = cleanMode(data.mode);
+      if (p.id === ws.room.hostId && data.world) ws.room.world = cleanWorld(data.world);
     }
     if (data.type === 'leave') leaveRoom(ws);
   });
