@@ -715,8 +715,8 @@ body.spectating .play-only { display: none; }
       o.name = data.name; o.isBot = !!data.bot; setHue(o, data.hue); o.alive = !!data.alive; o.tx = data.tx; o.ty = data.ty;
       o.cells = o.alive ? (data.cells || []).map(function (c, ci) {
         var old = o.cells[ci], n = newCell(c.x, c.y, c.m);
-        n.tx = c.x; n.ty = c.y; n.dr = c.dr || radiusOf(c.m);
-        if (old && old.tx !== undefined) { n.x = old.x; n.y = old.y; }
+        n.tx = c.x; n.ty = c.y; n.mTarget = c.m; n.rTarget = c.dr || radiusOf(c.m);
+        if (old && old.tx !== undefined) { n.x = old.x; n.y = old.y; n.m = old.m; n.dr = old.dr; }
         return n;
       }) : [];
     }
@@ -733,6 +733,7 @@ body.spectating .play-only { display: none; }
       for (var j = 0; j < o.cells.length; j++) {
         var c = o.cells[j]; if (c.tx === undefined) continue;
         c.x += (c.tx - c.x) * blend; c.y += (c.ty - c.y) * blend;
+        if (c.mTarget !== undefined) { c.m += (c.mTarget - c.m) * blend; c.dr += (c.rTarget - c.dr) * blend; }
       }
     }
   }
